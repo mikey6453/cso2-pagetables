@@ -8,8 +8,8 @@ all: libmlpt.a
 libmlpt.a: $(OBJECTS)
 	ar rcs libmlpt.a $(OBJECTS)
 
-%.o: %.c
-	$(CC) $(CFLAGS) -c $< -o $@
+mlpt.o: mlpt.c mlpt.h config.h
+	$(CC) $(CFLAGS) -c mlpt.c -o mlpt.o
 
 clean:
 	rm -f *.o libmlpt.a

@@ -1,0 +1,6 @@
+# Acknowledgements
+
+This project was developed as part of an academic assignment from Spring 2024 CS3130
+
+- **Educational Resources**: Textbook information on the course website from Spring 2024 CS3130: https://www.cs.virginia.edu/~cr4bd/3130/S2024/labhw/pagetable.html
+
