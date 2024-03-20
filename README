@@ -9,6 +9,14 @@ This library provides an implementation of a multi-level page table for virtual 
 - `LEVELS`: This represents the number of levels in the page table. Acceptable values range from 1 to 6. Adjust this based on the required depth of your page table hierarchy.
 - `POBITS`: This defines the size of page offsets, indirectly dictating the size of each page table. Acceptable values range from 4 to 18. This setting also affects the number of entries in each page table.
 
+## Big-O Analysis
+
+- **Time Complexity of page_allocate**: The function `page_allocate` has a time complexity of O(LEVELS), as it iterates over each level of the page table only once per level to allocate or traverse page tables. The work done at each level is constant, assuming memory allocation via `posix_memalign` takes constant time.
+
+- **Time Complexity of translate**: Similar to `page_allocate`, `translate` also has a time complexity of O(LEVELS). It traverses each level of the page table once to find the physical address, with constant-time operations performed at each level.
+
+- **Space Complexity**: The space complexity is largely influenced by the number of pages and page tables allocated. Each call to `page_allocate` that results in a new page or page table allocation increases the space usage linearly. Therefore, the worst-case space complexity can be considered O(N), where N is the number of unique virtual addresses that are allocated.
+
 ### Choosing Values
 - **LEVELS**: Increase for deeper table structures, useful for larger virtual address spaces. More levels increase the time complexity of translations and allocations.
 - **POBITS**: Increase for larger page sizes. Larger pages can reduce the number of page tables but may increase memory wastage due to internal fragmentation.

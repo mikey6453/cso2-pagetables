@@ -63,14 +63,16 @@ size_t translate(size_t va) {
     }
 
     size_t *current_pt = (size_t *)ptbr;
+    size_t entry;
     for (int level = 1; level <= LEVELS; ++level) {
         size_t index = (va >> INDEX_SHIFT(level)) & INDEX_MASK;
-        if (!(current_pt[index] & VALID_BIT_MASK)) {
+        entry = current_pt[index];
+        if (!(entry & VALID_BIT_MASK)) {
             return MAX;
         }
-        current_pt = (size_t *)(current_pt[index] & ~VALID_BIT_MASK);
+        current_pt = (size_t *)(entry & ~VALID_BIT_MASK);
     }
 
     size_t offset = va & (PAGE_SIZE - 1);
-    return ((size_t)current_pt << POBITS) | offset;
+    return ((entry >> POBITS) << POBITS) | offset;
 }
