@@ -4,8 +4,8 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <stddef.h>
 
-#define _XOPEN_SOURCE 700
 #define MAX 0xFFFFFFFFFFFFFFFF
 #define PAGE_SIZE (1 << POBITS)
 #define ENTRY_COUNT (PAGE_SIZE / sizeof(size_t))
@@ -41,18 +41,20 @@ void page_allocate(size_t va) {
     size_t *current_pt = (size_t *)ptbr;
     for (int level = 1; level <= LEVELS; ++level) {
         size_t index = (va >> INDEX_SHIFT(level)) & INDEX_MASK;
-        if ((level == LEVELS) || !(current_pt[index] & VALID_BIT_MASK)) {
-            size_t *new_page_or_table;
-            if (posix_memalign((void **)&new_page_or_table, PAGE_SIZE, PAGE_SIZE) != 0) {
-                fprintf(stderr, "Memory allocation failed\n");
-                exit(EXIT_FAILURE);
+        if (level == LEVELS) {
+            if (!(current_pt[index] & VALID_BIT_MASK)) {
+                size_t *new_page;
+                if (posix_memalign((void **)&new_page, PAGE_SIZE, PAGE_SIZE) != 0) {
+                    fprintf(stderr, "Memory allocation failed\n");
+                    exit(EXIT_FAILURE);
+                }
+                memset(new_page, 0, PAGE_SIZE);
+                size_t ppn = ((size_t)new_page) >> POBITS;
+                current_pt[index] = (ppn << POBITS) | VALID_BIT_MASK;
             }
-            memset(new_page_or_table, 0, PAGE_SIZE);
-            size_t ppn = ((size_t)new_page_or_table) >> POBITS;
-            current_pt[index] = (ppn << POBITS) | VALID_BIT_MASK;
-        }
-        if (level < LEVELS) {
-            current_pt = (size_t *)(current_pt[index] & ~VALID_BIT_MASK);
+            break;
+        } else {
+            current_pt = get_or_create_page_table(current_pt, index);
         }
     }
 }
@@ -63,16 +65,18 @@ size_t translate(size_t va) {
     }
 
     size_t *current_pt = (size_t *)ptbr;
-    size_t entry;
     for (int level = 1; level <= LEVELS; ++level) {
         size_t index = (va >> INDEX_SHIFT(level)) & INDEX_MASK;
-        entry = current_pt[index];
+        size_t entry = current_pt[index];
         if (!(entry & VALID_BIT_MASK)) {
             return MAX;
+        }
+        if (level == LEVELS) {
+            size_t offset = va & (PAGE_SIZE - 1);
+            return ((entry >> POBITS) << POBITS) | offset;
         }
         current_pt = (size_t *)(entry & ~VALID_BIT_MASK);
     }
 
-    size_t offset = va & (PAGE_SIZE - 1);
-    return ((entry >> POBITS) << POBITS) | offset;
+    return MAX; // Should not reach here, added to avoid compiler warnings
 }
