@@ -1,82 +1,103 @@
 #include "mlpt.h"
 #include "config.h"
 #include <stdio.h>
+#include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
-#include <stdint.h>
-#include <stddef.h>
-
-#define MAX 0xFFFFFFFFFFFFFFFF
-#define PAGE_SIZE (1 << POBITS)
-#define ENTRY_COUNT (PAGE_SIZE / sizeof(size_t))
-#define VALID_BIT_MASK 0x1
-#define INDEX_MASK ((1 << (POBITS - 3)) - 1)
-#define INDEX_SHIFT(LEVEL) (POBITS + (LEVEL - 1) * (POBITS - 3))
+#include <math.h>
 
 size_t ptbr = 0;
 
-size_t *get_or_create_page_table(size_t *current_pt, size_t index) {
-    if (!(current_pt[index] & VALID_BIT_MASK)) {
-        size_t *new_pt;
-        if (posix_memalign((void **)&new_pt, PAGE_SIZE, PAGE_SIZE) != 0) {
-            fprintf(stderr, "Memory allocation failed\n");
-            exit(EXIT_FAILURE);
-        }
-        memset(new_pt, 0, PAGE_SIZE);
-        size_t ppn = ((size_t)new_pt) >> POBITS;
-        current_pt[index] = (ppn << POBITS) | VALID_BIT_MASK;
-    }
-    return (size_t *)(current_pt[index] & ~VALID_BIT_MASK);
-}
+const size_t invalidAdd= ~0b0;
 
-void page_allocate(size_t va) {
-    if (!ptbr) {
-        if (posix_memalign((void **)&ptbr, PAGE_SIZE, PAGE_SIZE) != 0) {
-            fprintf(stderr, "Memory allocation failed\n");
-            exit(EXIT_FAILURE);
-        }
-        memset((void *)ptbr, 0, PAGE_SIZE);
+size_t translate(size_t virtualAddress){
+    // Check if Page Table Base Register (PTBR) is not set
+    if (ptbr == 0){
+        return invalidAdd; // Return invalid address if PTBR is not initialized
     }
 
-    size_t *current_pt = (size_t *)ptbr;
-    for (int level = 1; level <= LEVELS; ++level) {
-        size_t index = (va >> INDEX_SHIFT(level)) & INDEX_MASK;
-        if (level == LEVELS) {
-            if (!(current_pt[index] & VALID_BIT_MASK)) {
-                size_t *new_page;
-                if (posix_memalign((void **)&new_page, PAGE_SIZE, PAGE_SIZE) != 0) {
-                    fprintf(stderr, "Memory allocation failed\n");
-                    exit(EXIT_FAILURE);
-                }
-                memset(new_page, 0, PAGE_SIZE);
-                size_t ppn = ((size_t)new_page) >> POBITS;
-                current_pt[index] = (ppn << POBITS) | VALID_BIT_MASK;
+    // Calculate offset from virtual address
+    size_t offset = ((1 << POBITS) - 1) & virtualAddress;
+
+    // Start with the base address of the page table
+    size_t currentAddress = ptbr;
+
+    // Iterate through each level of the page table
+    for (int level = 0; level < LEVELS; level += 1){
+        // Shift right to get the index for the current level and mask the unnecessary bits
+        size_t index = virtualAddress;
+        int shiftAmount = POBITS + (POBITS - 3) * (LEVELS - level - 1);
+
+        for (int i = 0; i < shiftAmount; ++i) {
+            index >>= 1;
+        }
+
+        unsigned mask = (1 << (POBITS - 3)) - 1;
+        size_t vpn = index & mask;
+
+        size_t address = currentAddress + (vpn * 8);
+        size_t* pageTableEntry = (size_t*)address;
+
+        size_t validBit = *pageTableEntry & 1;
+
+        if (validBit == 1){
+            // move to the next page table
+            if (level != LEVELS - 1){
+                size_t nextPageTable = (*pageTableEntry >> POBITS) << POBITS;
+                currentAddress = nextPageTable;
+            } else {
+                // calc and return physical addres at final level
+                size_t finalPageTableEntry = (*pageTableEntry >> POBITS) << POBITS;
+                return finalPageTableEntry + offset;
             }
-            break;
         } else {
-            current_pt = get_or_create_page_table(current_pt, index);
+            // Invalid bit, return invalid address
+            return invalidAdd;
         }
     }
+    // In case we exit the loop without returning, still return invalid address
+    return invalidAdd;
 }
 
-size_t translate(size_t va) {
-    if (!ptbr) {
-        return MAX;
+void page_allocate(size_t virtualAddress){
+    // Calculate page size using POBITS
+    size_t pageSize = pow(2, POBITS);
+
+    // Initialize PTBR
+    if (ptbr == 0){
+        posix_memalign((void **)(&ptbr), pageSize, pageSize); 
+        memset((void *)ptbr, 0, pageSize);
     }
 
-    size_t *current_pt = (size_t *)ptbr;
-    for (int level = 1; level <= LEVELS; ++level) {
-        size_t index = (va >> INDEX_SHIFT(level)) & INDEX_MASK;
-        size_t entry = current_pt[index];
-        if (!(entry & VALID_BIT_MASK)) {
-            return MAX;
-        }
-        if (level == LEVELS) {
-            size_t offset = va & (PAGE_SIZE - 1);
-            return ((entry >> POBITS) << POBITS) | offset;
-        }
-        current_pt = (size_t *)(entry & ~VALID_BIT_MASK);
-    }
+    size_t currentAddress = ptbr;
 
-    return MAX; // Should not reach here, added to avoid compiler warnings
+    // Loop through each level of multi-level page table
+    for (int level = 0; level < LEVELS; level += 1){
+        // Shift right to get index for current level and hide unnecesary bits
+        size_t index = virtualAddress;
+        int shiftAmount = POBITS + (POBITS - 3) * (LEVELS - level - 1);
+        for (int i = 0; i < shiftAmount; ++i) {
+            index >>= 1;
+        }
+        unsigned mask = (1 << (POBITS - 3)) - 1;
+        size_t vpn = index & mask;
+
+        // Calculate address 
+        size_t address = currentAddress + (vpn * 8); 
+        size_t* pageTableEntry = (size_t*)address; 
+
+        size_t validBit = *pageTableEntry & 1;
+        if (validBit == 1){
+
+            currentAddress = (*pageTableEntry >> POBITS) << POBITS;
+        } else {
+            // If entry is not valid, create a new page table
+            size_t newPageTable;
+            posix_memalign((void **)(&newPageTable), pageSize, pageSize); 
+            memset((void *)newPageTable, 0, pageSize); 
+            newPageTable |= 1; 
+            *pageTableEntry = newPageTable; 
+            currentAddress = (*pageTableEntry >> POBITS) << POBITS; 
+        }
+    }
 }

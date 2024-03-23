@@ -10,6 +10,13 @@
 extern size_t ptbr;
 
 /**
+ * Invalid address value used to indicate that a virtual address
+ * does not have a corresponding physical address.
+ * This is set to a value with all bits as 1.
+ */
+extern const size_t invaidAdd;
+
+/**
  * Given a virtual address, return the physical address.
  * Return a value consisting of all 1 bits
  * if this virtual address does not have a physical address.
@@ -22,4 +29,5 @@ size_t translate(size_t va);
  * address. If there already is such a page, does nothing.
  */
 void page_allocate(size_t va);
-#endif
+
+#endif // MLPT_H_

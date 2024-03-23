@@ -22,11 +22,17 @@ This library provides an implementation of a multi-level page table for virtual 
 - **POBITS**: Increase for larger page sizes. Larger pages can reduce the number of page tables but may increase memory wastage due to internal fragmentation.
 
 ### Deallocation
-While the current library effectively handles the allocation and translation of virtual to physical addresses, it does not include a function for deallocating memory. Incorporating a deallocation feature, such as a void page_deallocate(size_t va) function, could be beneficial for managing memory usage more dynamically. However, the integration of such a feature would bring substantial complexities:
+- **Proposed Interface**:
+void page_deallocate(size_t va); – Deallocates the page corresponding to the given virtual address.
+- **Practicality Challenges**:
+- Implementing page_deallocate requires significant changes to page_allocate and translate. For effective deallocation, these functions must track additional metadata, like reference counts for each page table entry.
+- The library lacks mechanisms to safely determine when a page or page table is no longer in use, which is critical for safe deallocation. This limitation can lead to premature deallocation, causing potential memory access violations.
+- The proposed deallocation interface does not account for shared pages between different virtual addresses, making it unsafe in its current form.
 
-Page Table Management: Deallocating memory involves more than just freeing the mapped physical memory; it requires careful management of the corresponding page table entries across multiple levels, potentially leading to the deallocation of entire page tables if they become empty.
-Memory Safety Concerns: Implementing deallocation introduces risks of memory misuse, such as dangling pointers or use-after-free errors, necessitating rigorous memory tracking mechanisms.
-
+### Testing Hooks
+- void enable_testing_mode(); – Activates a mode that logs operations for testing and debugging purposes.
+- void disable_testing_mode(); – Turns off testing mode.
+- void print_page_table(size_t ptbr); – Visualizes the page table for debugging.
 
 ## Known Limitations
 - This implementation currently does not support concurrent access. In multi-threaded environments, care must be taken to ensure thread safety.
